@@ -20,6 +20,138 @@
 #include "ssl_debug_helpers.h"
 
 
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED) && defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+
+/*
+ * ssl_tls13_write_key_share_key_update
+ *
+ * Structure of key_share extension in ClientHello:
+ *
+ *  struct {
+ *          NamedGroup group;
+ *          opaque key_exchange<1..2^16-1>;
+ *      } KeyShareEntry;
+ *  struct {
+ *          KeyShareEntry client_shares<0..2^16-1>;
+ *      } KeyShareClientHello;
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_tls13_write_key_share_key_update(mbedtls_ssl_context *ssl,
+                                         unsigned char *buf,
+                                         unsigned char *end,
+                                         size_t *out_len)
+{
+    unsigned char *p = buf;
+    uint16_t group_id;
+    int ret = MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE;
+
+    *out_len = 0;
+
+    MBEDTLS_SSL_DEBUG_MSG(3, ("adding extended key share"));
+
+    /* HRR could already have requested something else. */
+    group_id = ssl->handshake->offered_group_id;
+/*    if (!mbedtls_ssl_tls13_named_group_is_ecdhe(group_id) &&
+        !mbedtls_ssl_tls13_named_group_is_ffdh(group_id)) {
+        MBEDTLS_SSL_PROC_CHK(ssl_tls13_get_default_group_id(ssl,
+                                                            &group_id));
+    }
+*/
+    MBEDTLS_SSL_DEBUG_MSG(2, ("selected_group: %s (%04x)",
+                            mbedtls_ssl_named_group_to_str(group_id),
+                            group_id));
+
+    /*
+     * Dispatch to type-specific key generation function.
+     *
+     * So far, we're only supporting ECDHE. With the introduction
+     * of PQC KEMs, we'll want to have multiple branches, one per
+     * type of KEM, and dispatch to the corresponding crypto. And
+     * only one key share entry is allowed.
+     */
+#if defined(PSA_WANT_ALG_ECDH) || defined(PSA_WANT_ALG_FFDH)
+    if (mbedtls_ssl_tls13_named_group_is_ecdhe(group_id) ||
+        mbedtls_ssl_tls13_named_group_is_ffdh(group_id)) {
+        /* Pointer to group */
+        unsigned char *group = p;
+        /* Length of key_exchange */
+        size_t key_exchange_len = 0;
+
+        /* Check there is space for header of KeyShareEntry
+         * - group                  (2 bytes)
+         * - key_exchange_length    (2 bytes)
+         */
+        MBEDTLS_SSL_CHK_BUF_PTR(p, end, 4);
+        p += 4;
+        ret = mbedtls_ssl_tls13_generate_and_write_xxdh_key_exchange(
+            ssl, group_id, p, end, &key_exchange_len);
+        MBEDTLS_SSL_DEBUG_BUF(5, "Key Exchange",
+            p, key_exchange_len);
+
+        p += key_exchange_len;
+        if (ret != 0) {
+            MBEDTLS_SSL_DEBUG_MSG(1, ("failed generating xxdh key exchange"));
+            return ret;
+        }
+
+        /* Write group */
+        MBEDTLS_PUT_UINT16_BE(group_id, group, 0);
+        /* Write key_exchange_length */
+        MBEDTLS_PUT_UINT16_BE(key_exchange_len, group, 2);
+    } else
+#endif /* PSA_WANT_ALG_ECDH || PSA_WANT_ALG_FFDH */
+    if (0 /* other KEMs? */) {
+        /* Do something */
+    } else {
+        return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+    }
+    
+    /* Update offered_group_id field */
+    ssl->handshake->offered_group_id = group_id;
+
+    /* Output the total length of key_share extension. */
+    *out_len = p - buf;
+
+    MBEDTLS_SSL_DEBUG_BUF(
+        3, "extended key_share extension", buf, *out_len);
+
+    return ret;
+}
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED && defined(MBEDTLS_EXTENDED_KEY_UPDATE) */
+
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+
+/*
+ * Handler for MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST
+ */
+static int ssl_tls13_write_extended_key_update_request(mbedtls_ssl_context *ssl)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+
+	unsigned char *buf;
+	size_t buf_len, msg_len;
+
+	MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_start_handshake_msg(
+							 ssl, MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE,
+							 &buf, &buf_len));
+
+	MBEDTLS_SSL_PROC_CHK(ssl_tls13_write_key_share_key_update(
+							 ssl, buf, buf + buf_len, &msg_len));
+
+	MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_finish_handshake_msg(
+							 ssl, buf_len, msg_len));
+
+	mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
+
+cleanup:
+
+    return ret;
+}
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
+
+
+
+
 static const mbedtls_ssl_ciphersuite_t *ssl_tls13_validate_peer_ciphersuite(
     mbedtls_ssl_context *ssl,
     unsigned int cipher_suite)
@@ -3091,6 +3223,11 @@ static int ssl_tls13_handshake_wrapup(mbedtls_ssl_context *ssl)
             ssl, MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET);
     } else
 #endif
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+    if (mbedtls_ssl_tls13_named_group_is_ecdhe(ssl->handshake->offered_group_id)) {
+        mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST);
+    } else
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
     {
         mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
     }
@@ -3572,9 +3709,30 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
                 mbedtls_ssl_handshake_set_state(
                     ssl, MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET);
             }
+            mbedtls_ssl_handshake_set_state(
+                ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST);
             break;
 
 #endif /* MBEDTLS_SSL_SESSION_TICKETS */
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+        case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST:
+            ret = ssl_tls13_write_extended_key_update_request(ssl);
+            if (ret != 0) {
+                MBEDTLS_SSL_DEBUG_RET(1,
+                                      "ssl_tls13_write_extended_key_update_request ",
+                                      ret);
+            }
+            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
+            ret = 0;
+            break;
+
+        case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE:
+            MBEDTLS_SSL_DEBUG_MSG(1, ("State transition done: state %d", ssl->state));
+            ret = 0;
+            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
+            break;
+
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 
         default:
             MBEDTLS_SSL_DEBUG_MSG(1, ("invalid state %d", ssl->state));

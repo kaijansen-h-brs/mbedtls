@@ -200,7 +200,7 @@ static int ssl_tls13_process_extended_key_update_request(mbedtls_ssl_context *ss
 cleanup:
 
     MBEDTLS_SSL_DEBUG_MSG(2, ("<= parse extended key update message"));
-    return ret;
+    return 0;
 }
 #endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 
@@ -3288,6 +3288,7 @@ int mbedtls_ssl_tls13_handshake_client_step(mbedtls_ssl_context *ssl)
 
         case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE:
             MBEDTLS_SSL_DEBUG_MSG(1, ("State transition done: state %d", ssl->state));
+            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
             break;
 
 #endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
