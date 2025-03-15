@@ -2056,6 +2056,12 @@ int mbedtls_ssl_tls13_is_supported_versions_ext_present_in_exts(
     const unsigned char **supported_versions_data,
     const unsigned char **supported_versions_data_end);
 
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_write_extended_key_update_request(mbedtls_ssl_context *ssl);
+
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_write_extended_key_update_response(mbedtls_ssl_context *ssl);
+ 
 /*
  * Handler of TLS 1.3 server certificate message
  */

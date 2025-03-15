@@ -195,7 +195,7 @@ static int ssl_tls13_process_extended_key_update_request(mbedtls_ssl_context *ss
             ret = MBEDTLS_ERR_SSL_INTERNAL_ERROR;
     }
    */
-    mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
+   // mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
 
 cleanup:
 
@@ -3284,9 +3284,27 @@ int mbedtls_ssl_tls13_handshake_client_step(mbedtls_ssl_context *ssl)
 #if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
         case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST:
             ret = ssl_tls13_process_extended_key_update_request(ssl);
+            if (ret != 0) {
+                MBEDTLS_SSL_DEBUG_RET(1,
+                                      "ssl_tls13_process_extended_key_update_request ",
+                                      ret);
+            }
+            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST_ACCEPTED);
             break;
 
+        case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST_ACCEPTED:
+            ret = ssl_tls13_write_extended_key_update_response(ssl);
+            if (ret != 0) {
+                MBEDTLS_SSL_DEBUG_RET(1,
+                                      "ssl_tls13_write_extended_key_update_request ",
+                                      ret);
+            }
+            // TBD: key derivation
+            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
+            ret = 0;
+            break;
         case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE:
+
             MBEDTLS_SSL_DEBUG_MSG(1, ("State transition done: state %d", ssl->state));
             mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
             break;
