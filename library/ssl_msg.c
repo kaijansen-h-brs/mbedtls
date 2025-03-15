@@ -5312,7 +5312,7 @@ static int ssl_tls13_handle_hs_message_post_handshake(mbedtls_ssl_context *ssl)
 #else
             MBEDTLS_SSL_DEBUG_MSG(3, ("Ignore NewSessionTicket, not supported."));
             return 0;
-#endif
+#endif /* MBEDTLS_SSL_SESSION_TICKETS */
         }
         if (ssl_tls13_is_extendedkeyupdate(ssl)) {
             #if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
@@ -5320,13 +5320,30 @@ static int ssl_tls13_handle_hs_message_post_handshake(mbedtls_ssl_context *ssl)
                         ssl->keep_current_message = 1;
 
                         mbedtls_ssl_handshake_set_state(ssl,
-                            MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST);
+                            MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
                         return MBEDTLS_ERR_SSL_WANT_READ;
             #else
                         MBEDTLS_SSL_DEBUG_MSG(3, ("Ignore ExtendedKeyUpdateRequest, not supported."));
                         return 0;
             #endif
                     }
+    }
+#endif /* MBEDTLS_SSL_CLI_C */
+
+#if defined(MBEDTLS_SSL_SRV_C)
+    if (ssl->conf->endpoint == MBEDTLS_SSL_IS_SERVER) {
+        if (ssl_tls13_is_extendedkeyupdate(ssl)) {
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+            MBEDTLS_SSL_DEBUG_MSG(3, ("Extended Key Update received"));
+            ssl->keep_current_message = 1;
+
+            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
+            return MBEDTLS_ERR_SSL_WANT_READ;
+#else
+            MBEDTLS_SSL_DEBUG_MSG(3, ("Ignore Extended Key Update, not supported."));
+            return 0;
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
+        }
     }
 #endif /* MBEDTLS_SSL_CLI_C */
 

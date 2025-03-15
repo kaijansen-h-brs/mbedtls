@@ -752,6 +752,9 @@ struct mbedtls_ssl_handshake_params {
 #endif
 #endif /* MBEDTLS_SSL_SRV_C */
 
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+    uint16_t new_key_update_state;   /*!< state of extended key update */
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 #endif /* MBEDTLS_SSL_PROTO_TLS1_3 */
 
 #if defined(MBEDTLS_SSL_HANDSHAKE_WITH_CERT_ENABLED)
@@ -2060,8 +2063,22 @@ MBEDTLS_CHECK_RETURN_CRITICAL
 int ssl_tls13_write_extended_key_update_request(mbedtls_ssl_context *ssl);
 
 MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_process_extended_key_update_request(mbedtls_ssl_context *ssl);
+
+MBEDTLS_CHECK_RETURN_CRITICAL
 int ssl_tls13_write_extended_key_update_response(mbedtls_ssl_context *ssl);
- 
+
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_process_extended_key_update_response(mbedtls_ssl_context *ssl);
+
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_write_new_key_update(mbedtls_ssl_context *ssl);
+
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_process_new_key_update(mbedtls_ssl_context *ssl);
+
+
+
 /*
  * Handler of TLS 1.3 server certificate message
  */

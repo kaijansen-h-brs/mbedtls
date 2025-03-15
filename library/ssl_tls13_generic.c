@@ -1461,6 +1461,8 @@ int mbedtls_ssl_tls13_read_public_xxdhe_share(mbedtls_ssl_context *ssl,
     const uint8_t *end = buf + buf_len;
     mbedtls_ssl_handshake_params *handshake = ssl->handshake;
 
+    MBEDTLS_SSL_DEBUG_MSG(2, ("mbedtls_ssl_tls13_read_public_xxdhe_share"));
+
     /* Get size of the TLS opaque key_exchange field of the KeyShareEntry struct. */
     MBEDTLS_SSL_CHK_BUF_READ_PTR(p, end, 2);
     uint16_t peerkey_len = MBEDTLS_GET_UINT16_BE(p, 0);
@@ -1476,6 +1478,9 @@ int mbedtls_ssl_tls13_read_public_xxdhe_share(mbedtls_ssl_context *ssl,
                                   sizeof(handshake->xxdh_psa_peerkey)));
         return MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE;
     }
+
+    MBEDTLS_SSL_DEBUG_BUF(5, "KeyShare: ", p, peerkey_len);
+
     memcpy(handshake->xxdh_psa_peerkey, p, peerkey_len);
     handshake->xxdh_psa_peerkey_len = peerkey_len;
 
@@ -1784,6 +1789,166 @@ cleanup:
 }
 
 /*
+ * From draft-ietf-tls-extended-key-update
+ *
+ *   struct {
+ *      KeyShareEntry key_share;
+ *   } ExtendedKeyUpdateRequest
+ *
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_tls13_parse_extended_key_update_request(mbedtls_ssl_context *ssl,
+                                              unsigned char *buf,
+                                              unsigned char *end)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    unsigned char *p = buf;
+//    mbedtls_ssl_session *session = ssl->session;
+    uint16_t group, offered_group;
+
+    /* ...
+     * NamedGroup group; (2 bytes)
+     * ...
+     */
+    MBEDTLS_SSL_CHK_BUF_READ_PTR(p, end, 2);
+    group = MBEDTLS_GET_UINT16_BE(p, 0);
+    p += 2;
+
+    /* Check that the chosen group matches the one we offered. */
+    offered_group = ssl->handshake->offered_group_id;
+    if (offered_group != group) {
+        MBEDTLS_SSL_DEBUG_MSG(
+            1, ("Invalid server key share, our group %u, their group %u",
+                (unsigned) offered_group, (unsigned) group));
+        MBEDTLS_SSL_PEND_FATAL_ALERT(MBEDTLS_SSL_ALERT_MSG_HANDSHAKE_FAILURE,
+                                     MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE);
+        return MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE;
+    }
+
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED)
+    if (mbedtls_ssl_tls13_named_group_is_ecdhe(group) ||
+        mbedtls_ssl_tls13_named_group_is_ffdh(group)) {
+        MBEDTLS_SSL_DEBUG_MSG(2,
+                              ("DHE group name: %s", mbedtls_ssl_named_group_to_str(group)));
+        ret = mbedtls_ssl_tls13_read_public_xxdhe_share(ssl, p, end - p);
+        if (ret != 0) {
+            return ret;
+        }
+    } else
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED */
+    if (0 /* other KEMs? */) {
+        /* Do something */
+    } else {
+        return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+    }
+
+    return 0;
+}
+
+/*
+ * Handler for MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_process_extended_key_update_response(mbedtls_ssl_context *ssl)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    unsigned char *buf;
+    size_t buf_len;
+
+    MBEDTLS_SSL_DEBUG_MSG(2, ("=> parse extended key update response"));
+
+    MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_tls13_fetch_handshake_msg(
+                             ssl, MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE,
+                             &buf, &buf_len));
+
+    /*
+     * We are about to update (maybe only partially) ticket data thus block
+     * any session export for the time being.
+     */
+    ssl->session->exported = 1;
+
+    MBEDTLS_SSL_PROC_CHK(ssl_tls13_parse_extended_key_update_request(
+                             ssl, buf, buf + buf_len));
+
+    MBEDTLS_SSL_DEBUG_MSG(2, ("<= parse extended key update response"));
+    /*
+    MBEDTLS_SSL_PROC_CHK_NEG(ssl_tls13_postprocess_new_session_ticket(
+                                 ssl, ticket_nonce, ticket_nonce_len));
+
+    switch (ret) {
+        case POSTPROCESS_NEW_SESSION_TICKET_SIGNAL:
+            ssl->session->exported = 0;
+            ret = MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET;
+            break;
+
+        case POSTPROCESS_NEW_SESSION_TICKET_DISCARD:
+            ret = 0;
+            MBEDTLS_SSL_DEBUG_MSG(2, ("Discard new session ticket"));
+            break;
+
+        default:
+            ret = MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+    }
+   */
+   // mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
+
+cleanup:
+
+    return 0;
+}
+
+/*
+ * Handler for MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_process_extended_key_update_request(mbedtls_ssl_context *ssl)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    unsigned char *buf;
+    size_t buf_len;
+
+    MBEDTLS_SSL_DEBUG_MSG(2, ("=> parse extended key update request"));
+
+    MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_tls13_fetch_handshake_msg(
+                             ssl, MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE,
+                             &buf, &buf_len));
+
+    /*
+     * We are about to update (maybe only partially) ticket data thus block
+     * any session export for the time being.
+     */
+    ssl->session->exported = 1;
+
+    MBEDTLS_SSL_PROC_CHK(ssl_tls13_parse_extended_key_update_request(
+                             ssl, buf, buf + buf_len));
+/*
+    MBEDTLS_SSL_PROC_CHK_NEG(ssl_tls13_postprocess_new_session_ticket(
+                                 ssl, ticket_nonce, ticket_nonce_len));
+
+    switch (ret) {
+        case POSTPROCESS_NEW_SESSION_TICKET_SIGNAL:
+            ssl->session->exported = 0;
+            ret = MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET;
+            break;
+
+        case POSTPROCESS_NEW_SESSION_TICKET_DISCARD:
+            ret = 0;
+            MBEDTLS_SSL_DEBUG_MSG(2, ("Discard new session ticket"));
+            break;
+
+        default:
+            ret = MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+    }
+   */
+   // mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
+
+cleanup:
+
+    MBEDTLS_SSL_DEBUG_MSG(2, ("<= parse extended key update message"));
+    return 0;
+}
+
+/*
  * Handler for MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST
  */
 int ssl_tls13_write_extended_key_update_request(mbedtls_ssl_context *ssl)
@@ -1809,6 +1974,50 @@ cleanup:
 
     return ret;
 }
+
+/*
+ * TBD.
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+int ssl_tls13_process_new_key_update(mbedtls_ssl_context *ssl)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    unsigned char *buf;
+    size_t buf_len=0;
+
+    MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_tls13_fetch_handshake_msg(
+                             ssl, MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE,
+                             &buf, &buf_len));
+
+cleanup:
+
+    return ret;
+
+}
+
+
+/*
+ * TBD.
+ */
+int ssl_tls13_write_new_key_update(mbedtls_ssl_context *ssl)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+
+	unsigned char *buf;
+	size_t buf_len, msg_len=0;
+
+	MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_start_handshake_msg(
+							 ssl, MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE,
+							 &buf, &buf_len));
+
+	MBEDTLS_SSL_PROC_CHK(mbedtls_ssl_finish_handshake_msg(
+							 ssl, buf_len, msg_len));
+
+cleanup:
+
+    return ret;
+}
+
 #endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 
 

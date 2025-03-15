@@ -3094,7 +3094,7 @@ static int ssl_tls13_handshake_wrapup(mbedtls_ssl_context *ssl)
 #endif
 #if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
     if (mbedtls_ssl_tls13_named_group_is_ecdhe(ssl->handshake->offered_group_id)) {
-        mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST);
+        mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
     } else
 #endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
     {
@@ -3454,6 +3454,7 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
             break;
 
         case MBEDTLS_SSL_CLIENT_HELLO:
+            ssl->handshake->new_key_update_state = 0;
             ret = ssl_tls13_process_client_hello(ssl);
             if (ret != 0) {
                 MBEDTLS_SSL_DEBUG_RET(1, "ssl_tls13_process_client_hello", ret);
@@ -3578,27 +3579,66 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
                 mbedtls_ssl_handshake_set_state(
                     ssl, MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET);
             }
-            mbedtls_ssl_handshake_set_state(
-                ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST);
             break;
 
 #endif /* MBEDTLS_SSL_SESSION_TICKETS */
-#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
-        case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST:
-            ret = ssl_tls13_write_extended_key_update_request(ssl);
-            if (ret != 0) {
-                MBEDTLS_SSL_DEBUG_RET(1,
-                                      "ssl_tls13_write_extended_key_update_request ",
-                                      ret);
-            }
-            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE);
-            ret = 0;
-            break;
 
-        case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE:
-            MBEDTLS_SSL_DEBUG_MSG(1, ("State transition done: state %d", ssl->state));
-            ret = 0;
-            mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+        case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE:
+            if (ssl->handshake->new_key_update_state == 0) {
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Extended Key Update: Request\n"));
+                ret = ssl_tls13_process_extended_key_update_request(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_DEBUG_RET(1,
+                                        "ssl_tls13_parse_extended_key_update_request ",
+                                        ret);
+                }
+/*                ssl->handshake->new_key_update_state = 1;
+                mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
+                ret = 0;
+                break;
+            } else if (ssl->handshake->new_key_update_state == 1) {
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Extended Key Update: Response\n"));
+                ret = ssl_tls13_process_extended_key_update_response(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_DEBUG_RET(1,
+                                        "ssl_tls13_process_extended_key_update_response",
+                                        ret);
+                }
+*/
+                ret = ssl_tls13_write_extended_key_update_response(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_DEBUG_RET(1,
+                                        "ssl_tls13_write_extended_key_update_request ",
+                                        ret);
+                }
+                ssl->handshake->new_key_update_state = 1;
+                mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
+
+                // key derivation
+                ret = 0;
+                break;
+            } else if (ssl->handshake->new_key_update_state == 1) {
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Write NewKeyUpdate\n"));
+                // Send NewKeyUpdate
+                ret = ssl_tls13_write_new_key_update(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_DEBUG_RET(1,
+                                        "ssl_tls13_write_new_key_update ",
+                                        ret);
+                }
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Process NewKeyUpdate\n"));
+                ret = ssl_tls13_process_new_key_update(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_DEBUG_RET(1,
+                                        "ssl_tls13_process_new_key_update ",
+                                        ret);
+                }
+                mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
+                ret = 0;
+
+                break;
+            }
             break;
 
 #endif /* MBEDTLS_EXTENDED_KEY_UPDATE */

@@ -717,10 +717,7 @@ typedef enum {
     MBEDTLS_SSL_HANDSHAKE_OVER,
     MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET,
     MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET_FLUSH,
-    MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST,
-    MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST_ACCEPTED,
-    MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_RESPONSE,
-    MBEDTLS_SSL_TLS1_3_NEW_KEY_UPDATE
+    MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE
 }
 mbedtls_ssl_states;
 
@@ -2306,6 +2303,9 @@ int mbedtls_ssl_set_cid(mbedtls_ssl_context *ssl,
                         int enable,
                         unsigned char const *own_cid,
                         size_t own_cid_len);
+
+// doku
+int mbedtls_ssl_init_extended_key_update(mbedtls_ssl_context *ssl);
 
 /**
  * \brief              Get information about our request for usage of the CID

@@ -125,6 +125,23 @@ int mbedtls_ssl_set_cid(mbedtls_ssl_context *ssl,
     return 0;
 }
 
+int mbedtls_ssl_init_extended_key_update(mbedtls_ssl_context *ssl)
+{
+    int ret;
+
+    // error handling missing
+    ret = ssl_tls13_write_extended_key_update_request(ssl);
+    if (ret != 0) {
+        MBEDTLS_SSL_DEBUG_RET(1,
+                                "ssl_tls13_write_extended_key_update_request ",
+                                ret);
+    }
+    ret = 0;
+    ssl->handshake->new_key_update_state=1;
+
+    return ret;
+}
+
 int mbedtls_ssl_get_own_cid(mbedtls_ssl_context *ssl,
                             int *enabled,
                             unsigned char own_cid[MBEDTLS_SSL_CID_IN_LEN_MAX],

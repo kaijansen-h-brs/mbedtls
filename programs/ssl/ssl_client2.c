@@ -75,6 +75,7 @@ int main(void)
 #define DFL_RECO_SERVER_NAME    NULL
 #define DFL_RECO_DELAY          0
 #define DFL_RECO_MODE           1
+#define DFL_EKU_ENABLED         0
 #define DFL_CID_ENABLED         0
 #define DFL_CID_VALUE           ""
 #define DFL_CID_ENABLED_RENEGO  -1
@@ -148,6 +149,12 @@ int main(void)
 #else
 #define USAGE_KEY_OPAQUE ""
 #endif
+
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+#define USAGE_EKU \
+    "    eku=%%d             Disable (0) or enable (1) the use of the Extended Key Update extension.\n" \
+    "                       default: 0 (disabled)\n"
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 
 #if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
 #define USAGE_CID \
@@ -390,6 +397,7 @@ int main(void)
                                                                       "\n"                                                    \
     USAGE_DTLS                                              \
     USAGE_CID                                               \
+    USAGE_EKU                                               \
     USAGE_SRTP                                              \
     "\n"
 #define USAGE2 \
@@ -469,6 +477,7 @@ struct options {
     const char *crt_file;       /* the file with the client certificate     */
     const char *key_file;       /* the file with the client key             */
     int key_opaque;             /* handle private key as if it were opaque  */
+    int eku;                    /* extended key update */
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
     int psk_opaque;
 #endif
@@ -520,6 +529,7 @@ struct options {
     int eap_tls;                /* derive EAP-TLS keying material?          */
     int nss_keylog;             /* export NSS key log material              */
     const char *nss_keylog_file; /* NSS key log file                        */
+    int eku_enabled;            /* whether to use the EKU extension or not  */
     int cid_enabled;            /* whether to use the CID extension or not  */
     int cid_enabled_renego;     /* whether to use the CID extension or not
                                  * during renegotiation                     */
@@ -1105,6 +1115,14 @@ usage:
             opt.key_opaque = atoi(q);
         }
 #endif
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+        else if (strcmp(p, "eku") == 0) {
+            opt.eku_enabled = atoi(q);
+            if (opt.eku_enabled != 0 && opt.eku_enabled != 1) {
+                goto usage;
+            }
+        }
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 #if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
         else if (strcmp(p, "cid") == 0) {
             opt.cid_enabled = atoi(q);
@@ -1528,7 +1546,7 @@ usage:
         mbedtls_printf("CID not valid\n");
         goto exit;
     }
-
+    
     /* Keep CID settings for renegotiation unless
      * specified otherwise. */
     if (opt.cid_enabled_renego == DFL_CID_ENABLED_RENEGO) {
@@ -2735,6 +2753,20 @@ send_request:
                        (char *) buf);
         ret = 0;
     }
+
+    /* Test Key Update */
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+    if (opt.eku_enabled == 1) {
+        mbedtls_printf("  . Initiating extended key update...");
+
+        ret = mbedtls_ssl_init_extended_key_update(&ssl);
+        if (ret != 0) {
+            mbedtls_printf(" failed\n  ! mbedtls_ssl_init_extended_key_update returned -0x%x\n\n",
+                            (unsigned int) -ret);
+            goto exit;
+        }
+    }
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
 
     /*
      * 7b. Simulate hard reset and reconnect from same port?
