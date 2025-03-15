@@ -107,6 +107,18 @@
 #define MBEDTLS_ERROR_C
 
 /**
+ * \def MBEDTLS_EXTENDED_KEY_UPDATE
+ *
+ * Enable the extended key update defined in
+ * draft-ietf-tls-extended-key-update-04.txt
+ *
+ * This functionality introduces an extended key update mechanism
+ * that supports forward secrecy during the post handshake
+ * exchange.
+ */
+#define MBEDTLS_EXTENDED_KEY_UPDATE
+
+/**
  * \def MBEDTLS_ERROR_STRERROR_DUMMY
  *
  * Enable a dummy error function to make use of mbedtls_strerror() in

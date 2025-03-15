@@ -5280,6 +5280,17 @@ static int ssl_tls13_is_new_session_ticket(mbedtls_ssl_context *ssl)
 
     return 1;
 }
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_tls13_is_extendedkeyupdate(mbedtls_ssl_context *ssl)
+{
+
+    if ((ssl->in_hslen == mbedtls_ssl_hs_hdr_len(ssl)) ||
+        (ssl->in_msg[0] != MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE)) {
+        return 0;
+    }
+
+    return 1;
+}
 #endif /* MBEDTLS_SSL_CLI_C */
 
 MBEDTLS_CHECK_RETURN_CRITICAL
@@ -5303,6 +5314,19 @@ static int ssl_tls13_handle_hs_message_post_handshake(mbedtls_ssl_context *ssl)
             return 0;
 #endif
         }
+        if (ssl_tls13_is_extendedkeyupdate(ssl)) {
+            #if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+            MBEDTLS_SSL_DEBUG_MSG(3, ("ExtendedKeyUpdateRequest received"));
+                        ssl->keep_current_message = 1;
+
+                        mbedtls_ssl_handshake_set_state(ssl,
+                            MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE_REQUEST);
+                        return MBEDTLS_ERR_SSL_WANT_READ;
+            #else
+                        MBEDTLS_SSL_DEBUG_MSG(3, ("Ignore ExtendedKeyUpdateRequest, not supported."));
+                        return 0;
+            #endif
+                    }
     }
 #endif /* MBEDTLS_SSL_CLI_C */
 
