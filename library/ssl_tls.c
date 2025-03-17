@@ -130,6 +130,7 @@ int mbedtls_ssl_init_extended_key_update(mbedtls_ssl_context *ssl)
     int ret;
 
     // error handling missing
+    MBEDTLS_SSL_DEBUG_MSG(1, ("Write Extended Key Update Request\n"));
     ret = ssl_tls13_write_extended_key_update_request(ssl);
     if (ret != 0) {
         MBEDTLS_SSL_DEBUG_RET(1,
@@ -138,6 +139,11 @@ int mbedtls_ssl_init_extended_key_update(mbedtls_ssl_context *ssl)
     }
     ret = 0;
     ssl->handshake->new_key_update_state=1;
+
+    if ((ret = mbedtls_ssl_flush_output(ssl)) != 0) {
+        MBEDTLS_SSL_DEBUG_RET(1, "mbedtls_ssl_flush_output", ret);
+        return ret;
+    }
 
     return ret;
 }

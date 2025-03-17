@@ -5315,17 +5315,17 @@ static int ssl_tls13_handle_hs_message_post_handshake(mbedtls_ssl_context *ssl)
 #endif /* MBEDTLS_SSL_SESSION_TICKETS */
         }
         if (ssl_tls13_is_extendedkeyupdate(ssl)) {
-            #if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
             MBEDTLS_SSL_DEBUG_MSG(3, ("ExtendedKeyUpdateRequest received"));
                         ssl->keep_current_message = 1;
 
                         mbedtls_ssl_handshake_set_state(ssl,
                             MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
                         return MBEDTLS_ERR_SSL_WANT_READ;
-            #else
+#else
                         MBEDTLS_SSL_DEBUG_MSG(3, ("Ignore ExtendedKeyUpdateRequest, not supported."));
                         return 0;
-            #endif
+#endif
                     }
     }
 #endif /* MBEDTLS_SSL_CLI_C */
@@ -5801,6 +5801,12 @@ int mbedtls_ssl_write(mbedtls_ssl_context *ssl, const unsigned char *buf, size_t
             MBEDTLS_SSL_DEBUG_RET(1, "mbedtls_ssl_handshake", ret);
             return ret;
         }
+    }
+    
+    if (ssl->post_handshake == 1 && ssl->state != MBEDTLS_SSL_HANDSHAKE_OVER) {
+        MBEDTLS_SSL_DEBUG_MSG(2, ("Extended Key Update ongoing!"));
+        ret = MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS;
+        return ret;
     }
 
     ret = ssl_write_real(ssl, buf, len);

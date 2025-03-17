@@ -20,6 +20,18 @@
 #include "ssl_debug_helpers.h"
 
 
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED)
+/* Define a local translating function to save code size by not using too many
+ * arguments in each translating place. */
+static int local_err_translation(psa_status_t status)
+{
+    return psa_status_to_mbedtls(status, psa_to_ssl_errors,
+                                 ARRAY_LENGTH(psa_to_ssl_errors),
+                                 psa_generic_status_to_mbedtls);
+}
+#define PSA_TO_MBEDTLS_ERR(status) local_err_translation(status)
+#endif
+
 
 static const mbedtls_ssl_ciphersuite_t *ssl_tls13_validate_peer_ciphersuite(
     mbedtls_ssl_context *ssl,
@@ -3586,7 +3598,7 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
 #if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
         case MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE:
             if (ssl->handshake->new_key_update_state == 0) {
-                MBEDTLS_SSL_DEBUG_MSG(1, ("Extended Key Update: Request\n"));
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Process Extended Key Update Request\n"));
                 ret = ssl_tls13_process_extended_key_update_request(ssl);
                 if (ret != 0) {
                     MBEDTLS_SSL_DEBUG_RET(1,
@@ -3606,6 +3618,8 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
                                         ret);
                 }
 */
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Write Extended Key Update Response\n"));
+
                 ret = ssl_tls13_write_extended_key_update_response(ssl);
                 if (ret != 0) {
                     MBEDTLS_SSL_DEBUG_RET(1,
@@ -3616,17 +3630,69 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
                 mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_TLS1_3_EXTENDED_KEY_UPDATE);
 
                 // key derivation
+                mbedtls_ssl_handshake_params *handshake = ssl->handshake;
+                //psa_algorithm_t const hash_alg = mbedtls_md_psa_alg_from_type(
+                //    (mbedtls_md_type_t) handshake->ciphersuite_info->mac);
+                unsigned char *shared_secret = NULL;
+                size_t shared_secret_len = 0;
+
+                if (mbedtls_ssl_tls13_named_group_is_ecdhe(handshake->offered_group_id) ||
+                    mbedtls_ssl_tls13_named_group_is_ffdh(handshake->offered_group_id)) {
+#if defined(PSA_WANT_ALG_ECDH) || defined(PSA_WANT_ALG_FFDH)
+                    psa_algorithm_t alg =
+                        mbedtls_ssl_tls13_named_group_is_ecdhe(handshake->offered_group_id) ?
+                        PSA_ALG_ECDH : PSA_ALG_FFDH;
+        
+                    /* Compute ECDH shared secret. */
+                    psa_status_t status = PSA_ERROR_GENERIC_ERROR;
+                    psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
+        
+                    status = psa_get_key_attributes(handshake->xxdh_psa_privkey,
+                                                    &key_attributes);
+                    if (status != PSA_SUCCESS) {
+                        ret = PSA_TO_MBEDTLS_ERR(status);
+                    }
+        
+                    shared_secret_len = PSA_BITS_TO_BYTES(
+                        psa_get_key_bits(&key_attributes));
+                    shared_secret = mbedtls_calloc(1, shared_secret_len);
+                    if (shared_secret == NULL) {
+                        return MBEDTLS_ERR_SSL_ALLOC_FAILED;
+                    }
+        
+                    status = psa_raw_key_agreement(
+                        alg, handshake->xxdh_psa_privkey,
+                        handshake->xxdh_psa_peerkey, handshake->xxdh_psa_peerkey_len,
+                        shared_secret, shared_secret_len, &shared_secret_len);
+                    if (status != PSA_SUCCESS) {
+                        ret = PSA_TO_MBEDTLS_ERR(status);
+                        MBEDTLS_SSL_DEBUG_RET(1, "psa_raw_key_agreement", ret);
+                        goto cleanup;
+                    }
+
+                    MBEDTLS_SSL_DEBUG_BUF(
+                        3, "shared_secret:", shared_secret, shared_secret_len);
+                
+                    memcpy(ssl->handshake->tls13_master_secrets.app,shared_secret,shared_secret_len);
+
+                    status = psa_destroy_key(handshake->xxdh_psa_privkey);
+                    if (status != PSA_SUCCESS) {
+                        ret = PSA_TO_MBEDTLS_ERR(status);
+                        MBEDTLS_SSL_DEBUG_RET(1, "psa_destroy_key", ret);
+                        goto cleanup;
+                    }
+        
+                    handshake->xxdh_psa_privkey = MBEDTLS_SVC_KEY_ID_INIT;
+#endif /* PSA_WANT_ALG_ECDH || PSA_WANT_ALG_FFDH */
+                } else {
+                    MBEDTLS_SSL_DEBUG_MSG(1, ("Group not supported."));
+                    return MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE;
+                }
+
                 ret = 0;
+cleanup:
                 break;
             } else if (ssl->handshake->new_key_update_state == 1) {
-                MBEDTLS_SSL_DEBUG_MSG(1, ("Write NewKeyUpdate\n"));
-                // Send NewKeyUpdate
-                ret = ssl_tls13_write_new_key_update(ssl);
-                if (ret != 0) {
-                    MBEDTLS_SSL_DEBUG_RET(1,
-                                        "ssl_tls13_write_new_key_update ",
-                                        ret);
-                }
                 MBEDTLS_SSL_DEBUG_MSG(1, ("Process NewKeyUpdate\n"));
                 ret = ssl_tls13_process_new_key_update(ssl);
                 if (ret != 0) {
@@ -3634,6 +3700,23 @@ int mbedtls_ssl_tls13_handshake_server_step(mbedtls_ssl_context *ssl)
                                         "ssl_tls13_process_new_key_update ",
                                         ret);
                 }
+
+                MBEDTLS_SSL_DEBUG_MSG(1, ("Write NewKeyUpdate\n"));
+                ret = ssl_tls13_write_new_key_update(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_DEBUG_RET(1,
+                                        "ssl_tls13_write_new_key_update ",
+                                        ret);
+                }
+
+                ret = mbedtls_ssl_tls13_compute_application_transform_extended(ssl);
+                if (ret != 0) {
+                    MBEDTLS_SSL_PEND_FATAL_ALERT(
+                        MBEDTLS_SSL_ALERT_MSG_HANDSHAKE_FAILURE,
+                        MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE);
+                    return ret;
+                }
+            
                 mbedtls_ssl_handshake_set_state(ssl, MBEDTLS_SSL_HANDSHAKE_OVER);
                 ret = 0;
 

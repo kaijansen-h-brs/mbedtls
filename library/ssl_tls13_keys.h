@@ -19,13 +19,16 @@
     MBEDTLS_SSL_TLS1_3_LABEL(iv, "iv") \
     MBEDTLS_SSL_TLS1_3_LABEL(c_hs_traffic, "c hs traffic") \
     MBEDTLS_SSL_TLS1_3_LABEL(c_ap_traffic, "c ap traffic") \
+    MBEDTLS_SSL_TLS1_3_LABEL(c_up_traffic, "c up traffic") \
     MBEDTLS_SSL_TLS1_3_LABEL(c_e_traffic, "c e traffic") \
     MBEDTLS_SSL_TLS1_3_LABEL(s_hs_traffic, "s hs traffic") \
     MBEDTLS_SSL_TLS1_3_LABEL(s_ap_traffic, "s ap traffic") \
+    MBEDTLS_SSL_TLS1_3_LABEL(s_up_traffic, "s up traffic") \
     MBEDTLS_SSL_TLS1_3_LABEL(s_e_traffic, "s e traffic") \
     MBEDTLS_SSL_TLS1_3_LABEL(e_exp_master, "e exp master") \
     MBEDTLS_SSL_TLS1_3_LABEL(res_master, "res master") \
     MBEDTLS_SSL_TLS1_3_LABEL(exp_master, "exp master") \
+    MBEDTLS_SSL_TLS1_3_LABEL(exp_up_master, "exp up master") \
     MBEDTLS_SSL_TLS1_3_LABEL(ext_binder, "ext binder") \
     MBEDTLS_SSL_TLS1_3_LABEL(res_binder, "res binder") \
     MBEDTLS_SSL_TLS1_3_LABEL(derived, "derived") \
@@ -297,6 +300,16 @@ int mbedtls_ssl_tls13_derive_handshake_secrets(
     unsigned char const *transcript, size_t transcript_len,
     mbedtls_ssl_tls13_handshake_secrets *derived);
 
+/**
+ * \brief Derive TLS 1.3 application key material for extended key update.
+ * TBD
+ */
+int mbedtls_ssl_tls13_derive_application_secrets_updated(
+    psa_algorithm_t hash_alg,
+    unsigned char const *application_secret,
+    unsigned char const *transcript, size_t transcript_len,
+    mbedtls_ssl_tls13_application_secrets *derived);
+        
 /**
  * \brief Derive TLS 1.3 application key material from the master secret.
  *
@@ -627,6 +640,18 @@ int mbedtls_ssl_tls13_compute_handshake_transform(mbedtls_ssl_context *ssl);
  */
 MBEDTLS_CHECK_RETURN_CRITICAL
 int mbedtls_ssl_tls13_compute_application_transform(mbedtls_ssl_context *ssl);
+
+/**
+ * \brief Compute TLS 1.3 application transform for extended key update
+ *
+ * \param ssl  The SSL context to operate on. The early secret must have been
+ *             computed.
+ *
+ * \returns    \c 0 on success.
+ * \returns    A negative error code on failure.
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+int mbedtls_ssl_tls13_compute_application_transform_extended(mbedtls_ssl_context *ssl);
 
 #if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_PSK_ENABLED)
 /**

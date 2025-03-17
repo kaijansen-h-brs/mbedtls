@@ -2754,20 +2754,6 @@ send_request:
         ret = 0;
     }
 
-    /* Test Key Update */
-#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
-    if (opt.eku_enabled == 1) {
-        mbedtls_printf("  . Initiating extended key update...");
-
-        ret = mbedtls_ssl_init_extended_key_update(&ssl);
-        if (ret != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_init_extended_key_update returned -0x%x\n\n",
-                            (unsigned int) -ret);
-            goto exit;
-        }
-    }
-#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
-
     /*
      * 7b. Simulate hard reset and reconnect from same port?
      */
@@ -2945,9 +2931,26 @@ send_request:
     }
 #endif /* MBEDTLS_SSL_CONTEXT_SERIALIZATION */
 
+
+    /* Test Key Update */
+#if defined(MBEDTLS_EXTENDED_KEY_UPDATE)
+    if (opt.eku_enabled == 1) {
+        mbedtls_printf("  . Initiating extended key update...");
+
+        ret = mbedtls_ssl_init_extended_key_update(&ssl);
+        if (ret != 0) {
+            mbedtls_printf(" failed\n  ! mbedtls_ssl_init_extended_key_update returned -0x%x\n\n",
+                            (unsigned int) -ret);
+            goto exit;
+        }
+    }
+#endif /* MBEDTLS_EXTENDED_KEY_UPDATE */
+
     /*
      * 7d. Continue doing data exchanges?
      */
+    mbedtls_printf(" doing more data exchanges\n");
+
     if (--opt.exchanges > 0) {
         goto send_request;
     }
@@ -2957,6 +2960,7 @@ send_request:
      */
 close_notify:
     mbedtls_printf("  . Closing the connection...");
+
     fflush(stdout);
 
     /*

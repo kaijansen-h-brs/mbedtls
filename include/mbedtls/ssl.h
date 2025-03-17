@@ -84,6 +84,12 @@
  * This error code is experimental and may be changed or removed without notice.
  */
 #define MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET       -0x7B00
+/**
+ * Received Extended Key Update Post Handshake Message.
+ * This error code is experimental and may be changed or removed without notice.
+ */
+#define MBEDTLS_ERR_SSL_RECEIVED_EXTENDED_KEY_UPDATE      -0x7B10
+
 /** Not possible to read early data */
 #define MBEDTLS_ERR_SSL_CANNOT_READ_EARLY_DATA            -0x7B80
 /**
@@ -1657,6 +1663,7 @@ struct mbedtls_ssl_context {
      * Miscellaneous
      */
     int MBEDTLS_PRIVATE(state);                  /*!< SSL handshake: current state     */
+    int post_handshake;                         /*!< Is protocol in post-handshake authentication state? 1 means yes. */
 #if defined(MBEDTLS_SSL_RENEGOTIATION)
     int MBEDTLS_PRIVATE(renego_status);          /*!< Initial, in progress, pending?   */
     int MBEDTLS_PRIVATE(renego_records_seen);    /*!< Records since renego request, or with DTLS,

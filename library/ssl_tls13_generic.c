@@ -59,10 +59,23 @@ int mbedtls_ssl_tls13_fetch_handshake_msg(mbedtls_ssl_context *ssl,
 
     if (ssl->in_msgtype != MBEDTLS_SSL_MSG_HANDSHAKE ||
         ssl->in_msg[0]  != hs_type) {
-        MBEDTLS_SSL_DEBUG_MSG(1, ("Receive unexpected handshake message."));
-        MBEDTLS_SSL_PEND_FATAL_ALERT(MBEDTLS_SSL_ALERT_MSG_UNEXPECTED_MESSAGE,
-                                     MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE);
-        ret = MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE;
+        if (ssl->post_handshake != 1) {
+            MBEDTLS_SSL_DEBUG_MSG(1, ("Receive unexpected handshake message."));
+            MBEDTLS_SSL_PEND_FATAL_ALERT(MBEDTLS_SSL_ALERT_MSG_UNEXPECTED_MESSAGE,
+                                        MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE);
+            ret = MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE;
+        } else { // post handshake message
+            switch (ssl->in_msg[0]){
+                case MBEDTLS_SSL_HS_EXTENDED_KEY_UPDATE: 
+                    ret = MBEDTLS_ERR_SSL_RECEIVED_EXTENDED_KEY_UPDATE;
+                    break;
+                case MBEDTLS_SSL_HS_NEW_SESSION_TICKET:
+                    ret = MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET;
+                    break;
+                default:
+                    ret = MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE;
+            }
+        }
         goto cleanup;
     }
 
@@ -1545,7 +1558,7 @@ int mbedtls_ssl_tls13_generate_and_write_xxdh_key_exchange(
     psa_algorithm_t alg = PSA_ALG_NONE;
     size_t buf_size = (size_t) (end - buf);
 
-    MBEDTLS_SSL_DEBUG_MSG(1, ("Perform PSA-based ECDH/FFDH computation."));
+//    MBEDTLS_SSL_DEBUG_MSG(5, ("Perform PSA-based ECDH/FFDH computation."));
 
     /* Convert EC's TLS ID to PSA key type. */
 #if defined(PSA_WANT_ALG_ECDH)
