@@ -621,6 +621,7 @@
 #define MBEDTLS_TLS_EXT_POST_HANDSHAKE_AUTH         49 /* RFC 8446 TLS 1.3 */
 #define MBEDTLS_TLS_EXT_SIG_ALG_CERT                50 /* RFC 8446 TLS 1.3 */
 #define MBEDTLS_TLS_EXT_KEY_SHARE                   51 /* RFC 8446 TLS 1.3 */
+#define MBEDTLS_TLS_EXT_JUMBO                      100 /* jumbo extension */
 
 #if MBEDTLS_SSL_DTLS_CONNECTION_ID_COMPAT == 0
 #define MBEDTLS_TLS_EXT_CID                         54 /* RFC 9146 DTLS 1.2 CID */
@@ -1230,6 +1231,10 @@ struct mbedtls_ssl_session {
 #if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
     uint16_t MBEDTLS_PRIVATE(record_size_limit);
 #endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
+
+#if defined(MBEDTLS_SUPER_JUMBO_EXTENSION)
+uint32_t jumbo_record_size; /* Super Jumbo Record Limit */
+#endif /* MBEDTLS_SUPER_JUMBO_EXTENSION */
 
     unsigned char MBEDTLS_PRIVATE(exported);
     uint8_t MBEDTLS_PRIVATE(endpoint);          /*!< 0: client, 1: server */
